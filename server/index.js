@@ -6,7 +6,36 @@ const db = require('./database');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(cors());
+// Strict CORS: avoid exposing API to arbitrary frontends
+const parseOrigins = (value) =>
+    (value || '')
+        .split(',')
+        .map(o => o.trim())
+        .filter(Boolean);
+
+const isProd = process.env.NODE_ENV === 'production';
+const configuredOrigins = parseOrigins(process.env.CORS_ORIGIN);
+const defaultDevOrigins = [
+    'http://localhost:5173',
+    'http://127.0.0.1:5173'
+];
+const allowedOrigins = new Set([
+    ...configuredOrigins,
+    ...(!isProd ? defaultDevOrigins : [])
+]);
+
+app.use(cors({
+    origin: (origin, callback) => {
+        // Allow non-browser or same-origin requests (no Origin header)
+        if (!origin) return callback(null, true);
+        if (allowedOrigins.size === 0) {
+            // If nothing configured, be conservative in production, permissive in dev
+            return callback(null, !isProd);
+        }
+        return callback(null, allowedOrigins.has(origin));
+    },
+    credentials: true
+}));
 app.use(express.json());
 // Avoid serving local uploads folder on Vercel (read-only FS / external storage used)
 if (!process.env.VERCEL) {

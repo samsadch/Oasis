@@ -90,6 +90,15 @@ On the client, prefer relative API calls like `/api/...` so it works in both dev
 3. Add the environment variables listed above.
 4. Deploy. You can test locally with `vercel dev` as well.
 
+## 7. Security: Avoid direct DB calls from the frontend
+
+- Never connect to Postgres (or any DB) from the browser. Do not expose credentials like `DATABASE_URL` or service keys in any `VITE_` env.
+- The frontend must only talk to the backend via REST endpoints under `/api/...`.
+- CORS is restricted in `server/index.js`. Set `CORS_ORIGIN` in Vercel to the exact origin(s) allowed to call the API.
+  - Multiple origins supported via comma-separated list, e.g.: `https://oasis.vercel.app, https://www.oasisclub.org`
+  - In development, `http://localhost:5173` is auto-allowed when `NODE_ENV!=='production'`.
+- If you later add any SDKs (e.g., Supabase client) to the frontend, use only public anon keys and never grant direct DB access; keep privileged operations on the server.
+
 ## 6. Troubleshooting: DNS ENOTFOUND for Supabase host
 
 If you see an error like `getaddrinfo ENOTFOUND db.<project-ref>.supabase.co` from the backend on Vercel:
