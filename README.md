@@ -1,6 +1,6 @@
 # Oasis Mathamangalam Club - Developer Guide
 
-This project consists of a Node.js/Express backend (`server`) and a React/Vite frontend (`client`).
+This project consists of a Node.js/Express backend (`server`) and a React/Vite frontend (`client`). It now supports PostgreSQL for production (Vercel) with a local SQLite fallback for development.
 
 ## 1. Getting Started
 
@@ -37,43 +37,21 @@ cd client
 npm run dev
 ```
 
-## 3. Database Guide
+## 3. Database Guide (PostgreSQL on Vercel)
 
-The project uses **SQLite**. The database file is located at `server/oasis.db`.
+The backend uses PostgreSQL when the `DATABASE_URL` environment variable is present (recommended for Vercel). If `DATABASE_URL` is not set, it falls back to a local **SQLite** file at `server/oasis.db` for development.
 
-### Current Schema
-The database is initialized in `server/database.js`.
+Schema is initialized automatically in `server/database.js` for both PostgreSQL and SQLite. When using Postgres, tables are created on cold start if they do not exist.
 
--   **users**: Stores member information.
-    -   `id`, `name`, `email`, `password` (hashed), `blood_group`, `phone`, `image_url`, `is_admin`, `created_at`.
--   **officials**: Stores club officials' details.
-    -   `id`, `name`, `position`, `contact_info`, `image_url`.
--   **events**: Stores club programs/events.
-    -   `id`, `title`, `description`, `date`, `active`.
--   **messages**: Stores broadcast messages.
-    -   `id`, `content`, `sent_at`.
+Key tables: users, officials, events, messages, posts, post_likes, post_comments, comment_likes.
 
-### How to Update Tables
+### Migrating Existing SQLite data to Postgres (optional)
+If you have existing data in `server/oasis.db` and want to migrate it to PostgreSQL:
 
-To modify the database schema (e.g., add a new column):
-
-1.  **Modify `server/database.js`**:
-    Update the `CREATE TABLE` statement in the `initDb()` function. This ensures new installations get the correct schema.
-
-2.  **Existing Databases (Migrations)**:
-    If you have an existing `oasis.db` file, updating `database.js` alone won't change existing tables. You must run a SQL command to alter the table.
-    
-    You can add a migration script in `initDb()` or run a temporary script:
-    
-    ```javascript
-    // Example: Adding a 'role' column to users
-    db.run("ALTER TABLE users ADD COLUMN role TEXT", (err) => {
-        if (err) console.log("Column likely exists or error: " + err.message);
-        else console.log("Column added successfully");
-    });
-    ```
-    
-    Alternatively, you can open `oasis.db` with a SQLite viewer (like *DB Browser for SQLite*) and modify tables manually.
+1. Export SQLite to CSV per table (using DB Browser for SQLite or CLI).
+2. Create a hosted Postgres (Neon/Supabase/Render) and get the `DATABASE_URL`.
+3. Use your Postgres dashboard to import CSVs into the corresponding tables (ensure column order matches). Alternatively, run INSERT scripts after creating tables once the app initializes them on first run.
+4. Set `DATABASE_URL` in Vercel. Re-deploy and verify data.
 
 ## 4. Server API Structure
 
@@ -84,17 +62,49 @@ To modify the database schema (e.g., add a new column):
     -   `events.js`: Managing programs and messages.
     -   `admin.js`: Administrative tasks (e.g., blood donor search).
 
-## 5. Viewing the Database
+## 5. Deployment to Vercel (API + SPA)
 
-Since this project uses **SQLite**, the database is a single file (`server/oasis.db`) and cannot be opened directly in a web browser like PHPMyAdmin.
+The repository contains a `vercel.json` configured to:
+- Build the server as a serverless function from `server/index.js`.
+- Build the client using Vite (`client/`) and serve it as a static SPA.
+- Route `/api/*` requests to the serverless function and all other routes to `index.html`.
 
-**Recommended Options:**
+### Required environment variables (Vercel → Project Settings → Environment Variables)
+- NODE_ENV=production
+- DATABASE_URL=postgres://USER:PASSWORD@HOST:PORT/DBNAME (Neon/Supabase/etc.)
+- JWT_SECRET=your-secret
+- CLOUDINARY_CLOUD_NAME=...
+- CLOUDINARY_API_KEY=...
+- CLOUDINARY_API_SECRET=...
+- Optionally: CORS_ORIGIN with your frontend origin (if you need to restrict CORS)
 
-1.  **VS Code Extension** (Easiest):
-    -   Install the **"SQLite Viewer"** extension in VS Code.
-    -   Click on `server/oasis.db` in your file explorer to view tables directly in the editor.
+On the client, prefer relative API calls like `/api/...` so it works in both dev and prod without extra configuration.
 
-2.  **Desktop Application**:
-    -   Download [DB Browser for SQLite](https://sqlitebrowser.org/).
-    -   Open `server/oasis.db` with this application to browse data and run SQL queries.
+### Notes for Vercel
+- The serverless filesystem is read-only. This project uses Cloudinary for uploads. We conditionally avoid serving the local `/uploads` folder on Vercel.
+- Ensure `DATABASE_URL` is set so the app uses Postgres; otherwise it would attempt SQLite which is not persistent on Vercel.
+
+### Deploy
+1. Push the repo to GitHub/GitLab/Bitbucket.
+2. In Vercel, import the project (root directory).
+3. Add the environment variables listed above.
+4. Deploy. You can test locally with `vercel dev` as well.
+
+## 6. Troubleshooting: DNS ENOTFOUND for Supabase host
+
+If you see an error like `getaddrinfo ENOTFOUND db.<project-ref>.supabase.co` from the backend on Vercel:
+
+- Ensure `DATABASE_URL` is the Postgres URI from Supabase (Settings → Database → Connection info → URI), not the REST URL.
+  - Must start with `postgres://` or `postgresql://` and host should be `db.<project-ref>.supabase.co`.
+  - Include `?sslmode=require` at the end.
+- Avoid hidden spaces/newlines when pasting into Vercel env vars.
+- After deploying, check the Serverless Function logs: the app now logs the parsed DB protocol and host and performs a DNS preflight.
+  - If protocol isn’t `postgres` or host isn’t `db.*.supabase.co`, fix `DATABASE_URL` in Vercel and redeploy.
+  - If DNS fails, double‑check the host spelling and that you didn’t paste the REST URL.
+
+Example correct value:
+
+```
+DATABASE_URL=postgres://postgres:<YOUR_DB_PASSWORD>@db.<project-ref>.supabase.co:5432/postgres?sslmode=require
+```
 

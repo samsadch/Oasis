@@ -8,7 +8,18 @@ const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
-app.use('/uploads', express.static('uploads'));
+// Avoid serving local uploads folder on Vercel (read-only FS / external storage used)
+if (!process.env.VERCEL) {
+    app.use('/uploads', express.static('uploads'));
+}
+
+// Non-sensitive DB hostname log to help diagnose DNS issues in serverless envs
+if (process.env.DATABASE_URL) {
+    try {
+        const u = new URL(process.env.DATABASE_URL.trim());
+        console.log('DB host (parsed):', u.hostname);
+    } catch (_) { /* ignore */ }
+}
 
 app.get('/', (req, res) => {
     res.json({ message: 'Oasis Mathamangalam Club API is running' });

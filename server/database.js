@@ -1,5 +1,6 @@
 require('dotenv').config();
 const path = require('path');
+const dns = require('dns');
 
 let db;
 
@@ -12,6 +13,38 @@ const convertSql = (sql) => {
 if (process.env.DATABASE_URL) {
     // POSTGRES IMPLEMENTATION
     const { Pool } = require('pg');
+    // Trim and validate DATABASE_URL to avoid common DNS issues caused by copy/paste
+    if (typeof process.env.DATABASE_URL === 'string') {
+        const original = process.env.DATABASE_URL;
+        const trimmed = original.trim();
+        if (trimmed !== original) {
+            console.warn('DATABASE_URL contained leading/trailing whitespace and was trimmed.');
+            process.env.DATABASE_URL = trimmed;
+        }
+        try {
+            const parsed = new URL(trimmed);
+            // Log only non-sensitive parts for troubleshooting
+            console.log('DB protocol:', parsed.protocol.replace(':', ''));
+            console.log('DB host:', parsed.hostname);
+            if (parsed.protocol !== 'postgres:' && parsed.protocol !== 'postgresql:') {
+                console.error('Invalid DATABASE_URL protocol. Expected postgres:// or postgresql://');
+            }
+            // Supabase specific hint: host must start with db.
+            if (parsed.hostname.endsWith('.supabase.co') && !parsed.hostname.startsWith('db.')) {
+                console.error('Supabase DATABASE_URL host should be db.<project-ref>.supabase.co, not ' + parsed.hostname);
+            }
+            // Optional DNS preflight to surface ENOTFOUND early in logs (non-fatal)
+            dns.lookup(parsed.hostname, (err, address) => {
+                if (err) {
+                    console.error('DNS lookup failed for DB host', parsed.hostname, '-', err.code || err.message);
+                } else {
+                    console.log('DB host resolved to', address);
+                }
+            });
+        } catch (e) {
+            console.error('DATABASE_URL is not a valid URL. Ensure it is a proper Postgres connection string. Error:', e.message);
+        }
+    }
     const pool = new Pool({
         connectionString: process.env.DATABASE_URL,
         ssl: { rejectUnauthorized: false }
