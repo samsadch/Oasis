@@ -61,11 +61,20 @@ const eventsRoutes = require('./routes/events');
 const adminRoutes = require('./routes/admin');
 const postsRoutes = require('./routes/posts');
 
+// Mount routes under both "/api" (local dev and many deployments)
+// and bare paths (in case the hosting platform rewrites /api/* to the function and strips the prefix).
+// This makes routing resilient and fixes 404s caused by rewrite prefix differences.
 app.use('/api/auth', authRoutes);
 app.use('/api/officials', officialsRoutes);
 app.use('/api/events', eventsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/posts', postsRoutes);
+
+app.use('/auth', authRoutes);
+app.use('/officials', officialsRoutes);
+app.use('/events', eventsRoutes);
+app.use('/admin', adminRoutes);
+app.use('/posts', postsRoutes);
 
 if (require.main === module) {
     app.listen(PORT, () => {
